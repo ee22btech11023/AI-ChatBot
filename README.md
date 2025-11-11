@@ -1,18 +1,19 @@
 Chat Application
 A Node.js chat application that uses the Groq API for AI-powered responses.
 
+/*
+Project Structure:
 your-project/
-├── config/          # Configuration files
-├── database/        # Database related files
-├── node_modules/    # Dependencies (auto-generated)
-├── public/          # Static assets and frontend files
-├── routes/          # API route handlers
-├── .env             # Environment variables
-├── .gitignore       # Git ignore rules
-├── chat.db          # SQLite database file
-├── package.json     # Project dependencies and scripts
-├── package-lock.json # Exact dependency versions
-└── server.js        # Main application server
+├── config/
+├── database/
+├── public/
+├── routes/
+├── .env
+├── .gitignore
+├── chat.db
+├── package.json
+└── server.js
+*/
 
 Prerequisites:
 Node.js (version 14 or higher)
