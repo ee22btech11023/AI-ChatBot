@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <button id="newChatButton" class="new-chat-btn">New Chat</button>
+            </div>
+            <div class="chat-list" id="chatList">
+                <div class="loading">Loading your conversations...</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <header>
+                <div class="header-left">
+                    <h1>AI Chat Assistant</h1>
+                    <p>Intelligent conversations powered by advanced AI</p>
+                </div>
+                <div class="header-right">
+                    <div class="model-badge">Llama 3.1</div>
+                </div>
+            </header>
+
+            <div class="chat-box">
+                <div id="welcomeScreen" class="welcome-screen">
+                    <div class="welcome-icon">🤖</div>
+                    <h1 class="welcome-title">Welcome to AI Chat Assistant</h1>
+                    <p class="welcome-subtitle">Start a conversation with our advanced AI assistant. Get help with coding, writing, analysis, and much more.</p>
+                    
+                    <div class="feature-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">💬</div>
+                            <div class="feature-title">Smart Conversations</div>
+                            <div class="feature-desc">Natural, contextual dialogues with memory across sessions</div>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">⚡</div>
+                            <div class="feature-title">Lightning Fast</div>
+                            <div class="feature-desc">Powered by Groq for instant responses</div>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🔒</div>
+                            <div class="feature-title">Your Data Stays</div>
+                            <div class="feature-desc">All conversations saved locally on your device</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="messages" id="messages" style="display: none;"></div>
+
+                <div class="input-container-wrapper">
+                    <div class="input-container">
+                        <div class="input-wrapper">
+                            <textarea 
+                                id="messageInput" 
+                                placeholder="Message AI Assistant..." 
+                                rows="1"
+                                disabled
+                            ></textarea>
+                            <button id="sendButton" class="send-button" disabled></button>
+                        </div>
+                        <div class="input-hint">
+                            Press Enter to send • Shift+Enter for new line
+                        </div>
+                    </div>
+                </div>
+
+                <div class="export-section">
+                    <button id="exportButton" class="export-btn">
+                        📥 Export Conversation
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSessionId = null;
+
+        function showChatInterface() {
+            document.getElementById('welcomeScreen').style.display = 'none';
+            document.getElementById('messages').style.display = 'block';
+        }
+
+        function showWelcomeScreen() {
+            document.getElementById('welcomeScreen').style.display = 'flex';
+            document.getElementById('messages').style.display = 'none';
+        }
+
+        async function loadChatSessions() {
+            try {
+                const response = await fetch('/api/chats');
+                const data = await response.json();
+                const chatList = document.getElementById('chatList');
+                chatList.innerHTML = '';
+                if (data.sessions && data.sessions.length > 0) {
+                    data.sessions.forEach(session => {
+                        const chatItem = document.createElement('div');
+                        chatItem.className = 'chat-item';
+                        chatItem.setAttribute('data-session-id', session.id);
+                        const date = new Date(session.updated_at).toLocaleDateString();
+                        chatItem.innerHTML = `
+                            <div style="flex: 1;">
+                                <div class="chat-title">${escapeHtml(session.title)}</div>
+                                <div class="chat-date">${date}</div>
+                            </div>
+                            <button class="delete-chat">×</button>
+                        `;
+                        chatItem.addEventListener('click', () => loadChat(session.id));
+                        const deleteBtn = chatItem.querySelector('.delete-chat');
+                        deleteBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            deleteChat(session.id);
+                        });
+                        chatList.appendChild(chatItem);
+                    });
+                } else {
+                    chatList.innerHTML = '<div class="no-chats">No conversations yet</div>';
+                }
+            } catch (error) {
+                console.error('Error loading chats:', error);
+                document.getElementById('chatList').innerHTML = '<div class="error">Error loading conversations</div>';
+            }
+        }
+
+        async function loadChat(sessionId) {
+            try {
+                currentSessionId = sessionId;
+                showChatInterface();
+                document.getElementById('messageInput').disabled = false;
+                document.getElementById('sendButton').disabled = false;
+                const response = await fetch(`/api/chats/${sessionId}`);
+                const data = await response.json();
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.innerHTML = '';
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(msg => {
+                        addMessage(msg.role, msg.content);
+                    });
+                } else {
+                    addMessage('assistant', 'Hello! I\'m your AI assistant. I can help you with a wide variety of tasks including coding, writing, analysis, problem-solving, and much more. What would you like to explore today?');
+                }
+                document.querySelectorAll('.chat-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                const activeChat = document.querySelector(`[data-session-id="${sessionId}"]`);
+                if (activeChat) {
+                    activeChat.classList.add('active');
+                }
+                document.getElementById('messageInput').focus();
+            } catch (error) {
+                console.error('Error loading chat:', error);
+                addMessage('assistant', 'Sorry, there was an error loading this conversation. Please try again.');
+            }
+        }
+
+        async function createNewChat() {
+            try {
+                const response = await fetch('/api/chats/new', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                if (data.sessionId) {
+                    await loadChat(data.sessionId);
+                    await loadChatSessions();
+                } else {
+                    throw new Error('No session ID returned from server');
+                }
+            } catch (error) {
+                console.error('Error creating chat:', error);
+                alert('Error creating new chat: ' + error.message);
+                const testSessionId = 'test-' + Date.now();
+                currentSessionId = testSessionId;
+                showChatInterface();
+                document.getElementById('messageInput').disabled = false;
+                document.getElementById('sendButton').disabled = false;
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.innerHTML = '';
+                addMessage('assistant', 'Welcome to your new chat! (Fallback mode - server might be down)');
+                document.getElementById('messageInput').focus();
+            }
+        }
+
+        async function deleteChat(sessionId) {
+            if (confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
+                try {
+                    const response = await fetch(`/api/chats/${sessionId}`, {
+                        method: 'DELETE'
+                    });
+                    if (response.ok) {
+                        if (sessionId === currentSessionId) {
+                            currentSessionId = null;
+                            showWelcomeScreen();
+                            document.getElementById('messageInput').disabled = true;
+                            document.getElementById('sendButton').disabled = true;
+                        }
+                        await loadChatSessions();
+                    } else {
+                        throw new Error('Failed to delete chat');
+                    }
+                } catch (error) {
+                    console.error('Error deleting chat:', error);
+                    alert('Error deleting conversation: ' + error.message);
+                }
+            }
+        }
+
+        async function sendMessage() {
+            if (!currentSessionId) {
+                alert('Please select or create a chat first!');
+                return;
+            }
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+            addMessage('user', message);
+            input.value = '';
+            resetTextareaHeight();
+            showTypingIndicator();
+            try {
+                const response = await fetch(`/api/chats/${currentSessionId}/message`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+                const data = await response.json();
+                removeTypingIndicator();
+                if (response.ok) {
+                    addMessage('assistant', data.response);
+                    await loadChatSessions();
+                } else {
+                    addMessage('assistant', `Error: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                removeTypingIndicator();
+                addMessage('assistant', 'Sorry, there was an error processing your message. Please try again.');
+            }
+        }
+
+        function addMessage(role, content) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+            const avatar = role === 'user' ? 'You' : 'AI';
+            messageDiv.innerHTML = `
+                <div class="message-avatar">${avatar}</div>
+                <div class="message-content">
+                    <div class="message-text">${escapeHtml(content)}</div>
+                    <div class="message-actions">
+                        <button class="action-btn">📋 Copy</button>
+                    </div>
+                </div>
+            `;
+            const copyBtn = messageDiv.querySelector('.action-btn');
+            copyBtn.addEventListener('click', () => {
+                copyToClipboard(content);
+            });
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const messagesDiv = document.getElementById('messages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message assistant-message';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = `
+                <div class="message-avatar">AI</div>
+                <div class="message-content">
+                    <div class="typing-indicator">
+                        AI is thinking
+                        <div class="typing-dots">
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            messagesDiv.appendChild(typingDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) typingIndicator.remove();
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+
+        async function exportChat() {
+            if (!currentSessionId) {
+                alert('Please select a conversation to export!');
+                return;
+            }
+            try {
+                window.open(`/api/chats/${currentSessionId}/export`, '_blank');
+            } catch (error) {
+                console.error('Error exporting chat:', error);
+                alert('Error exporting conversation');
+            }
+        }
+
+        function resetTextareaHeight() {
+            const textarea = document.getElementById('messageInput');
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        document.getElementById('newChatButton').addEventListener('click', createNewChat);
+        document.getElementById('sendButton').addEventListener('click', sendMessage);
+        document.getElementById('exportButton').addEventListener('click', exportChat);
+        const textarea = document.getElementById('messageInput');
+        textarea.addEventListener('input', resetTextareaHeight);
+        textarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        loadChatSessions();
+        showWelcomeScreen();
+    </script>
+</body>
+</html>
